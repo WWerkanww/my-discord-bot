@@ -28,13 +28,10 @@ async def help_command(ctx):
         color=discord.Color.blue()
     )
     
-    # Исправлен синтаксис тернарного оператора
-    clear_text = "сообщений" if ctx.channel.permissions_for(ctx.me).manage_messages else "N"
-    
     embed.add_field(name="!mes \"текст\"", value="Отправить сообщение от имени бота и удалить вызов", inline=False)
     embed.add_field(name="!id", value="Получить ID текущего пользователя или канала", inline=False)
     embed.add_field(name="!server_info", value="Информация о текущем сервере", inline=False)
-    embed.add_field(name="!clear <N>", value=f"Удалить последние N сообщений (нужно право Manage Messages)", inline=False)
+    embed.add_field(name="!clear <N>", value="Удалить последние N сообщений (нужно право Manage Messages)", inline=False)
     
     embed.set_footer(text=f"Запросил: {ctx.author.name}#{ctx.author.discriminator}")
     await ctx.send(embed=embed)
@@ -48,10 +45,6 @@ async def send_message(ctx, *, text: str):
         pass 
     
     await ctx.send(content=text)
-
-@bot.command()
-async def ping(ctx):
-    await ctx.send(f'Pong! Задержка: {round(bot.latency * 1000)}ms')
 
 @bot.command(name='id')
 async def get_id(ctx):
@@ -70,7 +63,8 @@ async def server_info(ctx):
         await ctx.send("Эта команда работает только на серверах.")
         return
 
-    embed = discord.Embed(title=f"Информация о сервере: {guild.name}", color=guild.primary_color)
+    # Исправление: используем discord.Color.blue() вместо guild.primary_color
+    embed = discord.Embed(title=f"Информация о сервере: {guild.name}", color=discord.Color.blue())
     embed.add_field(name="👑 Владелец", value=guild.owner, inline=False)
     embed.add_field(name="👥 Участников", value=guild.member_count, inline=False)
     embed.add_field(name="📅 Создан", value=guild.created_at.strftime("%d.%m.%Y %H:%M"), inline=False)
