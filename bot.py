@@ -24,7 +24,7 @@ async def on_ready():
 
 # --- Команды ---
 
-@bot.command(name='помощь', aliases=['help', 'h'])
+@bot.command(name='помощь', aliases=['h'])
 async def help_command(ctx):
     """Показать меню всех команд"""
     embed = discord.Embed(
