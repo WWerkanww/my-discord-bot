@@ -49,6 +49,10 @@ async def send_message(ctx, *, text: str):
     
     await ctx.send(content=text)
 
+@bot.command()
+async def ping(ctx):
+    await ctx.send(f'Pong! Задержка: {round(bot.latency * 1000)}ms')
+
 @bot.command(name='id')
 async def get_id(ctx):
     """Показать ID автора команды и канала"""
