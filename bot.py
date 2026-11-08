@@ -1,12 +1,11 @@
 import os
 import discord
 from discord.ext import commands
-from discord import app_commands
 
 # Настройка интентов
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True # Нужно для получения информации о пользователях
+intents.members = True 
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -15,12 +14,8 @@ async def on_ready():
     print(f'Бот успешно запустился!')
     print(f'Имя: {bot.user}')
     
-    # Синхронизация slash-команд (опционально, но полезно)
-    synced = await bot.tree.sync()
-    print(f"Синхронизировано {len(synced)} команд.")
-
     # Изменение статуса
-    await bot.change_presence(activity=discord.Game(name="!help"))
+    await bot.change_presence(activity=discord.Game(name="!помощь"))
 
 # --- Команды ---
 
@@ -33,11 +28,13 @@ async def help_command(ctx):
         color=discord.Color.blue()
     )
     
-    embed.add_field(name="!ping", value="Проверка работы бота", inline=False)
+    # Исправлен синтаксис тернарного оператора
+    clear_text = "сообщений" if ctx.channel.permissions_for(ctx.me).manage_messages else "N"
+    
     embed.add_field(name="!mes \"текст\"", value="Отправить сообщение от имени бота и удалить вызов", inline=False)
     embed.add_field(name="!id", value="Получить ID текущего пользователя или канала", inline=False)
     embed.add_field(name="!server_info", value="Информация о текущем сервере", inline=False)
-    embed.add_field(name="!clear <N>", value=f"Удалить последние {ctx.channel.permissions_for(ctx.me).manage_messages and 'сообщений' : 'N'} сообщений", inline=False)
+    embed.add_field(name="!clear <N>", value=f"Удалить последние N сообщений (нужно право Manage Messages)", inline=False)
     
     embed.set_footer(text=f"Запросил: {ctx.author.name}#{ctx.author.discriminator}")
     await ctx.send(embed=embed)
@@ -45,13 +42,11 @@ async def help_command(ctx):
 @bot.command(name='mes', aliases=['msg', 'm'])
 async def send_message(ctx, *, text: str):
     """Отправить сообщение от имени бота и удалить команду"""
-    # Удаляем сообщение, которое вызвало команду
     try:
         await ctx.message.delete()
     except discord.NotFound:
-        pass # Если сообщение уже удалено кем-то другим
+        pass 
     
-    # Отправляем новый ответ от имени бота
     await ctx.send(content=text)
 
 @bot.command(name='id')
@@ -77,25 +72,22 @@ async def server_info(ctx):
     embed.add_field(name="📅 Создан", value=guild.created_at.strftime("%d.%m.%Y %H:%M"), inline=False)
     embed.add_field(name="🔢 Всего каналов", value=len(guild.channels), inline=False)
     
-    # Иконка сервера
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
         
     await ctx.send(embed=embed)
 
 @bot.command(name='clear', aliases=['purge'])
-@commands.has_permissions(manage_messages=True) # Требует права Manage Messages
+@commands.has_permissions(manage_messages=True) 
 async def clear_messages(ctx, amount: int = 100):
     """Очистить чат от последних N сообщений"""
-    # Discord позволяет удалять не более 100 сообщений за раз
     if amount > 100:
         amount = 100
         
-    deleted = await ctx.channel.purge(limit=amount + 1) # +1 чтобы удалить саму команду
+    deleted = await ctx.channel.purge(limit=amount + 1) 
     
-    # Отправляем подтверждение, что сообщения удалены
     confirmation = await ctx.send(f"Удалено {len(deleted) - 1} сообщений!")
-    await confirmation.delete(delay=5) # Удалить само подтверждение через 5 секунд
+    await confirmation.delete(delay=5) 
 
 # Запуск
 if __name__ == '__main__':
