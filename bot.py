@@ -1,72 +1,44 @@
+import os
 import discord
 from discord.ext import commands
-import os
 
-# Получаем токен из переменных окружения Render
-TOKEN = os.getenv('DISCORD_TOKEN')
-
-if not TOKEN:
-    raise ValueError("Не найден токен! Проверь настройки в панели Render.")
-
-# Настройка интентов
+# Создаем интенты (разрешения), необходимые для работы
 intents = discord.Intents.default()
-intents.message_content = True
-intents.guilds = True
-intents.members = True # Для команды !info
+intents.message_content = True  # Чтобы бот мог читать сообщения в чате
 
+# Инициализация клиента
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Бот запущен на Render: {bot.user}')
-    for guild in bot.guilds:
-        print(f'Сервер: {guild.name} (ID: {guild.id})')
+    print(f'Бот успешно запустился!')
+    print(f'Имя пользователя: {bot.user}')
+    print(f'ID: {bot.user.id}')
+    
+    # Изменяем статус бота на "Online" с текстом "Ready!"
+    await bot.change_presence(activity=discord.Game(name="Ready!"))
 
 @bot.command()
 async def ping(ctx):
-    await ctx.send(f'Pong! Задержка: {round(bot.latency * 1000)} мс')
+    """Команда для проверки задержки"""
+    await ctx.send(f'Pong! Задержка: {round(bot.latency * 1000)}ms')
 
 @bot.command()
-async def mes(ctx, *, text: str):
-    """Удаляет команду и пишет от имени бота"""
-    await ctx.message.delete()
-    await ctx.channel.send(text)
+async def hello(ctx):
+    """Приветствие"""
+    await ctx.send(f'Привет, {ctx.author.mention}! Бот работает.')
 
 @bot.command()
-async def hello(ctx, name=None):
-    if name:
-        await ctx.send(f'Привет, {name}! 👋')
-    else:
-        await ctx.send('Привет! Используй !hello [имя]')
+async def test(ctx):
+    """Тестовая команда"""
+    await ctx.send('Все переменные загружены корректно!')
 
-@bot.command()
-async def info(ctx, member: discord.Member = None):
-    if member is None:
-        member = ctx.author
-    
-    embed = discord.Embed(
-        title=f'Инфо о {member.display_name}',
-        color=discord.Color.blue(),
-        timestamp=ctx.message.created_at
-    )
-    embed.add_field(name='Ник', value=member.display_name, inline=False)
-    embed.add_field(name='ID', value=member.id, inline=False)
-    embed.set_thumbnail(url=member.avatar.url or member.default_avatar.url)
-    
-    await ctx.send(embed=embed)
-
-@bot.event
-async def on_message(message):
-    if message.author == bot.user:
-        return
-    
-    content = message.content.lower().strip()
-    if content == 'привет':
-        await message.channel.send('Привет! 😊')
-    elif content == 'как дела':
-        await message.channel.send('Все отлично! 😄')
-    
-    await bot.process_commands(message)
-
+# Запуск бота
 if __name__ == '__main__':
-    bot.run(TOKEN)
+    # Получаем токен из переменной окружения DISCORD_TOKEN
+    token = os.getenv('DISCORD_TOKEN')
+    if not token:
+        raise ValueError("Переменная окружения DISCORD_TOKEN не найдена!")
+    
+    print(f"Запуск с токеном: {token[:5]}...")
+    bot.run(token)
