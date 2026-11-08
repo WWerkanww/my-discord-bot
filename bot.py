@@ -1,44 +1,106 @@
 import os
 import discord
 from discord.ext import commands
+from discord import app_commands
 
-# Создаем интенты (разрешения), необходимые для работы
+# Настройка интентов
 intents = discord.Intents.default()
-intents.message_content = True  # Чтобы бот мог читать сообщения в чате
+intents.message_content = True
+intents.members = True # Нужно для получения информации о пользователях
 
-# Инициализация клиента
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
     print(f'Бот успешно запустился!')
-    print(f'Имя пользователя: {bot.user}')
-    print(f'ID: {bot.user.id}')
+    print(f'Имя: {bot.user}')
     
-    # Изменяем статус бота на "Online" с текстом "Ready!"
-    await bot.change_presence(activity=discord.Game(name="Ready!"))
+    # Синхронизация slash-команд (опционально, но полезно)
+    synced = await bot.tree.sync()
+    print(f"Синхронизировано {len(synced)} команд.")
 
-@bot.command()
-async def ping(ctx):
-    """Команда для проверки задержки"""
-    await ctx.send(f'Pong! Задержка: {round(bot.latency * 1000)}ms')
+    # Изменение статуса
+    await bot.change_presence(activity=discord.Game(name="!help"))
 
-@bot.command()
-async def hello(ctx):
-    """Приветствие"""
-    await ctx.send(f'Привет, {ctx.author.mention}! Бот работает.')
+# --- Команды ---
 
-@bot.command()
-async def test(ctx):
-    """Тестовая команда"""
-    await ctx.send('Все переменные загружены корректно!')
+@bot.command(name='помощь', aliases=['help', 'h'])
+async def help_command(ctx):
+    """Показать меню всех команд"""
+    embed = discord.Embed(
+        title="📋 Меню команд",
+        description="Вот список доступных команд:",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="!ping", value="Проверка работы бота", inline=False)
+    embed.add_field(name="!mes \"текст\"", value="Отправить сообщение от имени бота и удалить вызов", inline=False)
+    embed.add_field(name="!id", value="Получить ID текущего пользователя или канала", inline=False)
+    embed.add_field(name="!server_info", value="Информация о текущем сервере", inline=False)
+    embed.add_field(name="!clear <N>", value=f"Удалить последние {ctx.channel.permissions_for(ctx.me).manage_messages and 'сообщений' : 'N'} сообщений", inline=False)
+    
+    embed.set_footer(text=f"Запросил: {ctx.author.name}#{ctx.author.discriminator}")
+    await ctx.send(embed=embed)
 
-# Запуск бота
+@bot.command(name='mes', aliases=['msg', 'm'])
+async def send_message(ctx, *, text: str):
+    """Отправить сообщение от имени бота и удалить команду"""
+    # Удаляем сообщение, которое вызвало команду
+    try:
+        await ctx.message.delete()
+    except discord.NotFound:
+        pass # Если сообщение уже удалено кем-то другим
+    
+    # Отправляем новый ответ от имени бота
+    await ctx.send(content=text)
+
+@bot.command(name='id')
+async def get_id(ctx):
+    """Показать ID автора команды и канала"""
+    embed = discord.Embed(title="ℹ️ Информация об ID", color=discord.Color.purple())
+    embed.add_field(name="Твой ID", value=f"{ctx.author.id}", inline=False)
+    embed.add_field(name="ID Канала", value=f"{ctx.channel.id}", inline=False)
+    embed.add_field(name="ID Сервера", value=f"{ctx.guild.id if ctx.guild else 'DМ'}", inline=False)
+    await ctx.send(embed=embed)
+
+@bot.command(name='server_info', aliases=['si'])
+async def server_info(ctx):
+    """Информация о сервере"""
+    guild = ctx.guild
+    if guild is None:
+        await ctx.send("Эта команда работает только на серверах.")
+        return
+
+    embed = discord.Embed(title=f"Информация о сервере: {guild.name}", color=guild.primary_color)
+    embed.add_field(name="👑 Владелец", value=guild.owner, inline=False)
+    embed.add_field(name="👥 Участников", value=guild.member_count, inline=False)
+    embed.add_field(name="📅 Создан", value=guild.created_at.strftime("%d.%m.%Y %H:%M"), inline=False)
+    embed.add_field(name="🔢 Всего каналов", value=len(guild.channels), inline=False)
+    
+    # Иконка сервера
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+        
+    await ctx.send(embed=embed)
+
+@bot.command(name='clear', aliases=['purge'])
+@commands.has_permissions(manage_messages=True) # Требует права Manage Messages
+async def clear_messages(ctx, amount: int = 100):
+    """Очистить чат от последних N сообщений"""
+    # Discord позволяет удалять не более 100 сообщений за раз
+    if amount > 100:
+        amount = 100
+        
+    deleted = await ctx.channel.purge(limit=amount + 1) # +1 чтобы удалить саму команду
+    
+    # Отправляем подтверждение, что сообщения удалены
+    confirmation = await ctx.send(f"Удалено {len(deleted) - 1} сообщений!")
+    await confirmation.delete(delay=5) # Удалить само подтверждение через 5 секунд
+
+# Запуск
 if __name__ == '__main__':
-    # Получаем токен из переменной окружения DISCORD_TOKEN
     token = os.getenv('DISCORD_TOKEN')
     if not token:
         raise ValueError("Переменная окружения DISCORD_TOKEN не найдена!")
     
-    print(f"Запуск с токеном: {token[:5]}...")
     bot.run(token)
