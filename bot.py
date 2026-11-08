@@ -1,4 +1,5 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 
@@ -32,6 +33,7 @@ async def help_command(ctx):
     embed.add_field(name="!id", value="Получить ID текущего пользователя или канала", inline=False)
     embed.add_field(name="!server_info", value="Информация о текущем сервере", inline=False)
     embed.add_field(name="!clear <N>", value="Удалить последние N сообщений (нужно право Manage Messages)", inline=False)
+    embed.add_field(name="!globalban @user", value="Забанить пользователя на ВСЕХ серверах бота", inline=False)
     
     embed.set_footer(text=f"Запросил: {ctx.author.name}#{ctx.author.discriminator}")
     await ctx.send(embed=embed)
@@ -63,7 +65,6 @@ async def server_info(ctx):
         await ctx.send("Эта команда работает только на серверах.")
         return
 
-    # Исправление: используем discord.Color.blue() вместо guild.primary_color
     embed = discord.Embed(title=f"Информация о сервере: {guild.name}", color=discord.Color.blue())
     embed.add_field(name="👑 Владелец", value=guild.owner, inline=False)
     embed.add_field(name="👥 Участников", value=guild.member_count, inline=False)
@@ -86,6 +87,51 @@ async def clear_messages(ctx, amount: int = 100):
     
     confirmation = await ctx.send(f"Удалено {len(deleted) - 1} сообщений!")
     await confirmation.delete(delay=5) 
+
+@bot.command(name='globalban', aliases=['gb'])
+@commands.is_owner() # Только владелец бота может использовать эту команду
+async def global_ban(ctx, user: discord.User):
+    """Глобальный бан пользователя на всех серверах"""
+    total_guilds = len(bot.guilds)
+    banned_count = 0
+    failed_guilds = []
+    
+    # Отправляем стартовое сообщение
+    status_msg = await ctx.send(f"Начинаю глобальный бан пользователя **{user}**... (Всего серверов: {total_guilds})")
+    
+    for guild in bot.guilds:
+        try:
+            # Проверяем, есть ли у бота права на бан
+            if not guild.me.guild_permissions.ban_members:
+                continue
+                
+            await guild.ban(user, reason=f"Global ban by {ctx.author}")
+            banned_count += 1
+            
+            # Небольшая задержка, чтобы избежать Rate Limit
+            await asyncio.sleep(0.5)
+            
+        except discord.Forbidden:
+            failed_guilds.append(guild.name)
+        except Exception as e:
+            failed_guilds.append(f"{guild.name}: {e}")
+            
+    # Формируем итоговое сообщение
+    result_embed = discord.Embed(
+        title="🌍 Глобальный бан завершен",
+        description=f"Пользователь **{user}** был забанен.",
+        color=discord.Color.red()
+    )
+    result_embed.add_field(name="Успешно забанено", value=f"{banned_count}/{total_guilds}", inline=False)
+    
+    if failed_guilds:
+        result_embed.add_field(name="Ошибки/Нет прав", value="\n".join(failed_guilds[:10]), inline=False)
+        if len(failed_guilds) > 10:
+            result_embed.add_field(name="...", value=f"И еще {len(failed_guilds) - 10} серверов", inline=False)
+            
+    result_embed.set_footer(text=f"Выполнил: {ctx.author}")
+    
+    await status_msg.edit(embed=result_embed)
 
 # Запуск
 if __name__ == '__main__':
