@@ -6,7 +6,6 @@ import datetime
 import asyncio
 
 # --- НАСТРОЙКИ ---
-# Токен берется из переменной окружения DISCORD_TOKEN
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 if not TOKEN:
@@ -18,21 +17,22 @@ intents.message_content = True
 # Создаем бота
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Инициализация времени запуска
+bot.uptime = datetime.datetime.utcnow()
+
 # --- СОБЫТИЯ ---
 
 @bot.event
 async def on_ready():
     print(f'✅ Бот успешно запустился!')
     print(f'Имя: {bot.user}')
-    print(f'ID: {bot.user.id}')
-    
     # Устанавливаем статус по умолчанию при запуске
     await bot.change_presence(activity=discord.Game(name="Помощь: /help"))
 
 # --- КОМАНДЫ ИНФОРМАЦИИ ---
 
-@bot.command(name='info', aliases=['h'])
-async def help_command(ctx):
+@bot.command(name='info', aliases=['help', 'h'])
+async def info_command(ctx):
     embed = discord.Embed(
         title="📋 Меню Команд",
         description="Вот список всех доступных команд:",
@@ -64,6 +64,10 @@ async def uptime(ctx):
 @bot.command(name='server_info')
 async def server_info(ctx):
     guild = ctx.guild
+    if guild is None:
+        await ctx.send("Эта команда доступна только на серверах.")
+        return
+        
     embed = discord.Embed(title=f"🖥 Информация о сервере: {guild.name}", color=discord.Color.orange())
     embed.add_field(name="👑 Владелец", value=guild.owner, inline=True)
     embed.add_field(name="👥 Участников", value=len(guild.members), inline=True)
@@ -75,7 +79,7 @@ async def server_info(ctx):
 @bot.command(name='user_info')
 async def user_info(ctx, member: discord.Member = None):
     member = member or ctx.author
-    embed = discord.Embed(title=f"👤 Информация о пользователе: {member}", color=discord.Color.dark_vivid())
+    embed = discord.Embed(title=f"👤 Информация о пользователе: {member}", color=discord.Color.dark_gray())
     embed.add_field(name="🆔 ID", value=str(member.id), inline=True)
     embed.add_field(name="📅 Регистрация аккаунта", value=member.created_at.strftime("%d/%m/%Y %H:%M"), inline=True)
     embed.add_field(name="📅 Присоединение к серверу", value=member.joined_at.strftime("%d/%m/%Y %H:%M"), inline=True)
@@ -94,15 +98,14 @@ async def avatar(ctx, member: discord.Member = None):
 
 @bot.command(name='invite')
 async def invite(ctx):
-    # Генерируем ссылку для приглашения бота с правами Manage Messages и Send Messages
-    app_info = await bot.application_info()
-    oauth_url = discord.utils.oauth_url(app_info.client_id, permissions=discord.Permissions(manage_messages=True, send_messages=True))
+    # Используем bot.user.id вместо app_info.client_id для совместимости
+    oauth_url = discord.utils.oauth_url(bot.user.id, permissions=discord.Permissions(manage_messages=True, send_messages=True))
     embed = discord.Embed(title="🔗 Ссылка для приглашения", description=f"[Нажми здесь]({oauth_url})", color=discord.Color.gold())
     await ctx.send(embed=embed)
 
 @bot.command(name='bot_status')
 @commands.is_owner()
-async def bot_status(ctx, *, status_text: str):
+async def bot_status(ctx, *, status_text: str = "Не указано"):
     await bot.change_presence(activity=discord.Game(name=status_text))
     embed = discord.Embed(title="✅ Статус изменен", description=f"Теперь бот играет в: **{status_text}**", color=discord.Color.green())
     await ctx.send(embed=embed)
