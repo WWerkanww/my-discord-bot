@@ -31,7 +31,7 @@ async def on_ready():
 
 # --- КОМАНДЫ ИНФОРМАЦИИ ---
 
-@bot.command(name='info', aliases=['help', 'h'])
+@bot.command(name='info', aliases=['h'])
 async def info_command(ctx):
     embed = discord.Embed(
         title="📋 Меню Команд",
