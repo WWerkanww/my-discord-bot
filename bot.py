@@ -117,7 +117,7 @@ async def broadcast(ctx, channel_id: str = None, *, message: str = ""):
 
 @bot.command(name='info', aliases=['h'])
 async def info(ctx):
-    embed = discord.Embed(title="📋 Меню Команд", color=discord.color.Color.blue())
+    embed = discord.Embed(title="📋 Меню Команд", color=discord.color.blue())
     embed.add_field(name="Инфо", value="`!ping`, `!uptime`, `!server_info`, `!user_info @user`", inline=False)
     embed.add_field(name="Админ (Lvl 2)", value="`!broadcast <id> <текст>`, `!add_admin @user`", inline=False)
     embed.add_field(name="Модератор (Lvl 1+)", value="`!ban @user`, `!kick @user`, `!clear <кол-во>`", inline=False)
