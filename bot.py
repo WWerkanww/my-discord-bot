@@ -14,9 +14,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 async def on_ready():
     print(f'Бот успешно запустился!')
     print(f'Имя: {bot.user}')
-    
-    # Изменение статуса
-    await bot.change_presence(activity=discord.Game(name="!помощь"))
+    await bot.change_presence(activity=discord.Game(name="!help"))
 
 # --- Команды ---
 
@@ -34,6 +32,7 @@ async def help_command(ctx):
     embed.add_field(name="!server_info", value="Информация о текущем сервере", inline=False)
     embed.add_field(name="!clear <N>", value="Удалить последние N сообщений (нужно право Manage Messages)", inline=False)
     embed.add_field(name="!globalban @user", value="Забанить пользователя на ВСЕХ серверах бота", inline=False)
+    embed.add_field(name="!globalmsg \"текст\" \"id1,id2...\"", value="Отправить текст сразу в несколько каналов", inline=False)
     
     embed.set_footer(text=f"Запросил: {ctx.author.name}#{ctx.author.discriminator}")
     await ctx.send(embed=embed)
@@ -96,19 +95,16 @@ async def global_ban(ctx, user: discord.User):
     banned_count = 0
     failed_guilds = []
     
-    # Отправляем стартовое сообщение
     status_msg = await ctx.send(f"Начинаю глобальный бан пользователя **{user}**... (Всего серверов: {total_guilds})")
     
     for guild in bot.guilds:
         try:
-            # Проверяем, есть ли у бота права на бан
             if not guild.me.guild_permissions.ban_members:
                 continue
                 
             await guild.ban(user, reason=f"Global ban by {ctx.author}")
             banned_count += 1
             
-            # Небольшая задержка, чтобы избежать Rate Limit
             await asyncio.sleep(0.5)
             
         except discord.Forbidden:
@@ -116,7 +112,6 @@ async def global_ban(ctx, user: discord.User):
         except Exception as e:
             failed_guilds.append(f"{guild.name}: {e}")
             
-    # Формируем итоговое сообщение
     result_embed = discord.Embed(
         title="🌍 Глобальный бан завершен",
         description=f"Пользователь **{user}** был забанен.",
@@ -132,6 +127,74 @@ async def global_ban(ctx, user: discord.User):
     result_embed.set_footer(text=f"Выполнил: {ctx.author}")
     
     await status_msg.edit(embed=result_embed)
+
+@bot.command(name='globalmsg', aliases=['gmsg'])
+@commands.is_owner() # Только владелец может рассылать спам
+async def global_msg(ctx, channel_ids: str, *, text: str):
+    """
+    Отправить сообщение в несколько каналов.
+    Использование: !globalmsg "123456789, 987654321" "Привет всем!"
+    """
+    # Парсим список ID каналов
+    ids_list = [id.strip() for id in channel_ids.split(',')]
+    
+    success_count = 0
+    fail_count = 0
+    errors = []
+
+    start_msg = await ctx.send(f"Отправка сообщения в **{len(ids_list)}** каналов...")
+
+    for channel_id_str in ids_list:
+        try:
+            channel_id = int(channel_id_str)
+            # Пытаемся найти канал. Сначала ищем в кэше, потом запросом к API
+            channel = bot.get_channel(channel_id)
+            
+            if channel is None:
+                # Если канал не найден в кэше, пробуем запросить его напрямую
+                try:
+                    channel = await bot.fetch_channel(channel_id)
+                except discord.NotFound:
+                    fail_count += 1
+                    errors.append(f"Канал {channel_id_str} не найден")
+                    continue
+                except discord.HTTPException as e:
+                    fail_count += 1
+                    errors.append(f"Ошибка доступа к {channel_id_str}: {e}")
+                    continue
+
+            # Отправляем сообщение
+            await channel.send(text)
+            success_count += 1
+            
+            # Небольшая пауза между отправками, чтобы не словить Rate Limit
+            await asyncio.sleep(0.5)
+            
+        except ValueError:
+            fail_count += 1
+            errors.append(f"{channel_id_str} - не число")
+        except discord.Forbidden:
+            fail_count += 1
+            errors.append(f"Нет прав для канала {channel_id_str}")
+        except Exception as e:
+            fail_count += 1
+            errors.append(f"Ошибка в канале {channel_id_str}: {e}")
+
+    # Формируем итоговый отчет
+    report_embed = discord.Embed(
+        title="📤 Рассылка завершена",
+        description=f"Текст: `{text}`",
+        color=discord.Color.green() if fail_count == 0 else discord.Color.yellow()
+    )
+    report_embed.add_field(name="✅ Успешно", value=str(success_count), inline=True)
+    report_embed.add_field(name="❌ Ошибки", value=str(fail_count), inline=True)
+    
+    if errors:
+        report_embed.add_field(name="Лог ошибок", value="\n".join(errors[:5]), inline=False)
+        if len(errors) > 5:
+            report_embed.add_field(name="...", value=f"Еще {len(errors) - 5} ошибок", inline=False)
+
+    await start_msg.edit(embed=report_embed)
 
 # Запуск
 if __name__ == '__main__':
