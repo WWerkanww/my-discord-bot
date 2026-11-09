@@ -31,14 +31,14 @@ async def on_ready():
 
 # --- КОМАНДЫ ИНФОРМАЦИИ ---
 
-@bot.command(name='help', aliases=['h'])
+@bot.command(name='info', aliases=['h'])
 async def help_command(ctx):
     embed = discord.Embed(
         title="📋 Меню Команд",
         description="Вот список всех доступных команд:",
         color=discord.Color.blue()
     )
-    embed.add_field(name="🔍 Информация", value="`/help`, `/ping`, `/uptime`, `/server_info`, `/user_info`, `/avatar`", inline=False)
+    embed.add_field(name="🔍 Информация", value="`/info`, `/ping`, `/uptime`, `/server_info`, `/user_info`, `/avatar`", inline=False)
     embed.add_field(name="🛠 Утилиты", value="`/invite`, `/bot_status <текст>`", inline=False)
     embed.add_field(name="🎲 Развлечения", value="`/roll`, `/coinflip`", inline=False)
     embed.set_footer(text=f"Запросил: {ctx.author}")
