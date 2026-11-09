@@ -16,7 +16,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 bot.uptime = datetime.datetime.now(datetime.timezone.utc)
 
 # Твой ID (замени на свой!)
-OWNER_ID = 123456789012345678 
+OWNER_ID = 944316738776989707
 
 def get_admin_level(member):
     """Определяет уровень доступа пользователя."""
