@@ -1,20 +1,16 @@
 import os
 import asyncio
 import threading
-import time
 import logging
 from flask import Flask, request, jsonify, render_template_string
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
 
 # --- КОНФИГУРАЦИЯ FLASK САЙТА ---
 app = Flask(__name__)
-
-# Глобальная переменная для хранения статуса последнего сообщения
-last_broadcast_msg = None
 
 @app.route('/')
 def home():
@@ -52,8 +48,6 @@ def handle_global_msg():
     if not bot.is_ready():
         return "Бот еще не запустился!"
 
-    # Запускаем функцию отправки в отдельном потоке или асинхронно
-    # Но так как мы в синхронном Flask, лучше использовать loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -85,13 +79,11 @@ def handle_send_local():
     if not bot.is_ready():
         return "Бот не готов"
     
-    # Находим первый доступный канал (для примера)
-    # В реальном проекте нужно выбирать канал через интерфейс
+    # Берем первый доступный сервер и канал
     guild = bot.guilds[0] if bot.guilds else None
     if not guild:
         return "Нет серверов"
     
-    # Ищем текстовый канал
     text_channel = discord.utils.get(guild.text_channels)
     if text_channel:
         loop = asyncio.new_event_loop()
@@ -107,8 +99,8 @@ def handle_send_local():
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.messages = True  # ВАЖНО для !clear и чтения истории
-intents.members = True   # Важно для глобального бана и других действий
+intents.messages = True 
+intents.members = True 
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
@@ -118,8 +110,9 @@ async def on_ready():
     print(f'Имя: {bot.user}')
     await bot.change_presence(activity=discord.Game(name="Управление через сайт"))
     
-    # Запуск Flask в отдельном потоке
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=5000)).start()
+    # Запускаем Flask внутри того же процесса
+    # Мы используем отдельный поток, чтобы Flask не блокировал работу бота
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000))).start()
 
 # --- КОМАНДЫ ---
 
@@ -134,7 +127,6 @@ async def help_command(ctx):
 
 @bot.command(name='mes', aliases=['msg', 'm'])
 async def send_message(ctx, *, text: str):
-    """Отправить сообщение от имени бота и удалить команду"""
     try:
         await ctx.message.delete()
     except discord.NotFound:
@@ -148,7 +140,6 @@ async def send_message(ctx, *, text: str):
 @bot.command(name='clear', aliases=['purge'])
 @commands.has_permissions(manage_messages=True) 
 async def clear_messages(ctx, amount: int = 100):
-    """Очистить чат от последних N сообщений"""
     if amount > 100:
         amount = 100
     
@@ -194,7 +185,6 @@ async def global_ban(ctx, user: discord.User):
 @bot.command(name='globalmsg', aliases=['gmsg'])
 @commands.is_owner() 
 async def global_msg(ctx, channel_ids: str, *, text: str):
-    """Рассылка в несколько каналов"""
     ids_list = [id.strip() for id in channel_ids.split(',')]
     success_count = 0
     fail_count = 0
@@ -238,5 +228,4 @@ if __name__ == '__main__':
     if not token:
         raise ValueError("Переменная окружения DISCORD_TOKEN не найдена!")
     
-    # Запускаем бота
     bot.run(token)
