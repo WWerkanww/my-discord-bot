@@ -1,60 +1,61 @@
 import discord
 from discord.ext import commands
-import aiohttp
+from aiohttp import web
 import asyncio
 import os
-import json
 
 # --- НАСТРОЙКИ ---
-TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = int(os.getenv('CHANNEL_ID')) # ID текстового канала, куда будем писать
+TOKEN = 'MTU2ODk4NDI4ODM3NDk1MjAwOA.Gx2xXd.r5rBTcrv7ZgdtVVKzPV0n00OpsD_nkxz3GbNH4'
+CHANNEL_ID = 1569350540381393058
 
-class MyBot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = True
-        super().__init__(command_prefix='!', intents=intents)
-        self.http_app = None
-        self.runner = None
+intents = discord.Intents.default()
+intents.message_content = True
 
-    async def on_ready(self):
-        print(f'Logged in as {self.user}')
-        await self.start_http_server()
+bot = commands.Bot(command_prefix='!', intents=intents)
 
-    async def start_http_server(self):
-        app = aiohttp.web.Application()
-        app.router.add_post('/webhook', self.handle_webhook)
+# Глобальная переменная для сервера
+server_task = None
+
+@bot.event
+async def on_ready():
+    print(f'{bot.user} успешно подключился!')
+    
+    global server_task
+    if server_task is None or server_task.done():
+        server_task = asyncio.create_task(start_http_server())
+
+async def start_http_server():
+    app = web.Application()
+    app.router.add_post('/webhook', handle_webhook)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    # Railway использует порт 8080
+    site = web.TCPSite(runner, '0.0.0.0', 8080) 
+    await site.start()
+    print("HTTP Сервер запущен на порту 8080")
+
+async def handle_webhook(request):
+    try:
+        data = await request.json()
+        content = data.get('content', '')
         
-        port = int(os.getenv('PORT', 8080))
-        self.runner = aiohttp.web.AppRunner(app)
-        await self.runner.setup()
-        site = aiohttp.web.TCPSite(self.runner, '0.0.0.0', port)
-        await site.start()
-        print(f"HTTP Server running on port {port}")
+        if not content:
+            return web.Response(text="Нет текста", status=400)
 
-    async def handle_webhook(self, request):
-        try:
-            data = await request.json()
-            message_text = data.get('message', '')
+        # Получаем канал по ID
+        channel = bot.get_channel(CHANNEL_ID)
+        
+        if channel:
+            await channel.send(content)
+            return web.Response(text="Отправлено", status=200)
+        else:
+            print(f"Канал с ID {CHANNEL_ID} не найден!")
+            return web.Response(text="Канал не найден", status=404)
             
-            if not message_text:
-                return aiohttp.web.Response(text="No message provided", status=400)
+    except Exception as e:
+        print(f"Ошибка обработки запроса: {e}")
+        return web.Response(text="Ошибка сервера", status=500)
 
-            channel = self.get_channel(CHANNEL_ID)
-            if channel:
-                await channel.send(message_text)
-                return aiohttp.web.Response(text="Success")
-            else:
-                return aiohttp.web.Response(text="Channel not found", status=500)
-        except Exception as e:
-            return aiohttp.web.Response(text=str(e), status=500)
-
-# Запуск
-bot = MyBot()
-
-@bot.command()
-async def ping(ctx):
-    await ctx.send('Pong!')
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     bot.run(TOKEN)
