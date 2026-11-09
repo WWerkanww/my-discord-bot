@@ -1,231 +1,60 @@
-import os
-import asyncio
-import threading
-import logging
-from flask import Flask, request, jsonify, render_template_string
 import discord
 from discord.ext import commands
+import aiohttp
+import asyncio
+import os
+import json
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
+# --- НАСТРОЙКИ ---
+TOKEN = os.getenv('DISCORD_TOKEN')
+CHANNEL_ID = int(os.getenv('CHANNEL_ID')) # ID текстового канала, куда будем писать
 
-# --- КОНФИГУРАЦИЯ FLASK САЙТА ---
-app = Flask(__name__)
+class MyBot(commands.Bot):
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(command_prefix='!', intents=intents)
+        self.http_app = None
+        self.runner = None
 
-@app.route('/')
-def home():
-    return """
-    <h1>Панель управления Discord Ботом</h1>
-    
-    <h3>1. Глобальная рассылка (GlobalMsg)</h3>
-    <form action="/globalmsg" method="POST">
-        <label>IDs каналов (через запятую):</label><br>
-        <input type="text" name="channels" placeholder="123456789, 987654321" required><br><br>
+    async def on_ready(self):
+        print(f'Logged in as {self.user}')
+        await self.start_http_server()
+
+    async def start_http_server(self):
+        app = aiohttp.web.Application()
+        app.router.add_post('/webhook', self.handle_webhook)
         
-        <label>Текст сообщения:</label><br>
-        <textarea name="message" rows="4" cols="50" required></textarea><br><br>
-        
-        <button type="submit">Отправить</button>
-    </form>
-    <p id="status"></p>
+        port = int(os.getenv('PORT', 8080))
+        self.runner = aiohttp.web.AppRunner(app)
+        await self.runner.setup()
+        site = aiohttp.web.TCPSite(self.runner, '0.0.0.0', port)
+        await site.start()
+        print(f"HTTP Server running on port {port}")
 
-    <hr>
-
-    <h3>2. Отправка в текущий чат (!mes)</h3>
-    <form action="/send_local" method="POST">
-        <label>Сообщение:</label><br>
-        <input type="text" name="message" required><br><br>
-        <button type="submit">Отправить</button>
-    </form>
-    <p id="local_status"></p>
-    """
-
-@app.route('/globalmsg', methods=['POST'])
-def handle_global_msg():
-    channels = request.form.get('channels')
-    message = request.form.get('message')
-    
-    if not bot.is_ready():
-        return "Бот еще не запустился!"
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        result = loop.run_until_complete(send_to_channels(channels, message))
-        return f"<h3>Результат:</h3>{result}"
-    finally:
-        loop.close()
-
-async def send_to_channels(channel_ids_str, text):
-    ids_list = [id.strip() for id in channel_ids_str.split(',')]
-    success_count = 0
-    errors = []
-    
-    for cid in ids_list:
+    async def handle_webhook(self, request):
         try:
-            cid_int = int(cid)
-            ch = bot.get_channel(cid_int) or await bot.fetch_channel(cid_int)
-            await ch.send(text)
-            success_count += 1
-            await asyncio.sleep(0.5)
-        except Exception as e:
-            errors.append(f"Ошибка канала {cid}: {e}")
+            data = await request.json()
+            message_text = data.get('message', '')
             
-    return f"✅ Успешно: {success_count}<br>❌ Ошибки: {'<br>'.join(errors)}"
+            if not message_text:
+                return aiohttp.web.Response(text="No message provided", status=400)
 
-@app.route('/send_local', methods=['POST'])
-def handle_send_local():
-    message = request.form.get('message')
-    if not bot.is_ready():
-        return "Бот не готов"
-    
-    # Берем первый доступный сервер и канал
-    guild = bot.guilds[0] if bot.guilds else None
-    if not guild:
-        return "Нет серверов"
-    
-    text_channel = discord.utils.get(guild.text_channels)
-    if text_channel:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            loop.run_until_complete(text_channel.send(message))
-            return f"Сообщение отправлено в канал {text_channel.name}"
-        finally:
-            loop.close()
-    return "Не удалось найти канал"
-
-# --- DISCORD BOT CONFIGURATION ---
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.messages = True 
-intents.members = True 
-
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-@bot.event
-async def on_ready():
-    print(f'Бот успешно запустился!')
-    print(f'Имя: {bot.user}')
-    await bot.change_presence(activity=discord.Game(name="Управление через сайт"))
-    
-    # Запускаем Flask внутри того же процесса
-    # Мы используем отдельный поток, чтобы Flask не блокировал работу бота
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=os.environ.get('PORT', 5000))).start()
-
-# --- КОМАНДЫ ---
-
-@bot.command(name='помощь', aliases=['h'])
-async def help_command(ctx):
-    embed = discord.Embed(title="📋 Меню команд", color=discord.Color.blue())
-    embed.add_field(name="!mes \"текст\"", value="Отправить сообщение и удалить команду", inline=False)
-    embed.add_field(name="!clear <N>", value="Удалить N сообщений (нужны права Manage Messages)", inline=False)
-    embed.add_field(name="!globalban @user", value="Забанить пользователя на всех серверах", inline=False)
-    embed.add_field(name="!globalmsg \"id1,id2\" \"текст\"", value="Рассылка в несколько каналов", inline=False)
-    await ctx.send(embed=embed)
-
-@bot.command(name='mes', aliases=['msg', 'm'])
-async def send_message(ctx, *, text: str):
-    try:
-        await ctx.message.delete()
-    except discord.NotFound:
-        pass 
-    except discord.Forbidden:
-        await ctx.send("❌ У бота нет прав на удаление сообщений!")
-        return
-        
-    await ctx.send(content=text)
-
-@bot.command(name='clear', aliases=['purge'])
-@commands.has_permissions(manage_messages=True) 
-async def clear_messages(ctx, amount: int = 100):
-    if amount > 100:
-        amount = 100
-    
-    try:
-        deleted = await ctx.channel.purge(limit=amount + 1) 
-        confirmation = await ctx.send(f"🧹 Удалено {len(deleted) - 1} сообщений!")
-        await confirmation.delete(delay=5) 
-    except discord.Forbidden:
-        await ctx.send("❌ У бота нет прав на удаление сообщений в этом канале.")
-
-@bot.command(name='globalban', aliases=['gb'])
-@commands.is_owner() 
-async def global_ban(ctx, user: discord.User):
-    total_guilds = len(bot.guilds)
-    banned_count = 0
-    failed_guilds = []
-    
-    status_msg = await ctx.send(f"Начинаю глобальный бан пользователя **{user}**...")
-    
-    for guild in bot.guilds:
-        try:
-            if not guild.me.guild_permissions.ban_members:
-                continue
-            await guild.ban(user, reason=f"Global ban by {ctx.author}")
-            banned_count += 1
-            await asyncio.sleep(0.5)
-        except discord.Forbidden:
-            failed_guilds.append(guild.name)
+            channel = self.get_channel(CHANNEL_ID)
+            if channel:
+                await channel.send(message_text)
+                return aiohttp.web.Response(text="Success")
+            else:
+                return aiohttp.web.Response(text="Channel not found", status=500)
         except Exception as e:
-            failed_guilds.append(f"{guild.name}: {e}")
-            
-    result_embed = discord.Embed(
-        title="🌍 Глобальный бан завершен",
-        description=f"Пользователь **{user}** был забанен.",
-        color=discord.Color.red()
-    )
-    result_embed.add_field(name="Успешно", value=f"{banned_count}/{total_guilds}", inline=False)
-    if failed_guilds:
-        result_embed.add_field(name="Ошибки", value="\n".join(failed_guilds[:5]), inline=False)
-        
-    await status_msg.edit(embed=result_embed)
-
-@bot.command(name='globalmsg', aliases=['gmsg'])
-@commands.is_owner() 
-async def global_msg(ctx, channel_ids: str, *, text: str):
-    ids_list = [id.strip() for id in channel_ids.split(',')]
-    success_count = 0
-    fail_count = 0
-    errors = []
-
-    start_msg = await ctx.send(f"Отправка в **{len(ids_list)}** каналов...")
-
-    for channel_id_str in ids_list:
-        try:
-            channel_id = int(channel_id_str)
-            channel = bot.get_channel(channel_id)
-            if channel is None:
-                channel = await bot.fetch_channel(channel_id)
-            
-            await channel.send(text)
-            success_count += 1
-            await asyncio.sleep(0.5)
-        except ValueError:
-            fail_count += 1
-            errors.append(f"{channel_id_str} - не число")
-        except discord.Forbidden:
-            fail_count += 1
-            errors.append(f"Нет прав для {channel_id_str}")
-        except Exception as e:
-            fail_count += 1
-            errors.append(f"Ошибка {channel_id_str}: {e}")
-
-    report_embed = discord.Embed(
-        title="📤 Рассылка завершена",
-        description=f"Текст: `{text}`",
-        color=discord.Color.green() if fail_count == 0 else discord.Color.yellow()
-    )
-    report_embed.add_field(name="✅ Успех", value=str(success_count), inline=True)
-    report_embed.add_field(name="❌ Ошибки", value=str(fail_count), inline=True)
-    
-    await start_msg.edit(embed=report_embed)
+            return aiohttp.web.Response(text=str(e), status=500)
 
 # Запуск
+bot = MyBot()
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send('Pong!')
+
 if __name__ == '__main__':
-    token = os.getenv('DISCORD_TOKEN')
-    if not token:
-        raise ValueError("Переменная окружения DISCORD_TOKEN не найдена!")
-    
-    bot.run(token)
+    bot.run(TOKEN)
