@@ -6,11 +6,12 @@ import os
 # --- КОНФИГУРАЦИЯ ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 if not TOKEN:
-    raise ValueError("Не найден токен бота!")
+    raise ValueError("Не найден токен бота! Установи переменную окружения DISCORD_TOKEN или вставь токен сюда.")
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
+intents.messages = True  # Важно для чтения сообщений
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 bot.uptime = datetime.datetime.now(datetime.timezone.utc)
@@ -22,7 +23,7 @@ def get_admin_level(member):
     """Определяет уровень доступа пользователя."""
     if member.id == OWNER_ID:
         return 2
-    
+        
     admin_role = discord.utils.get(member.guild.roles, name="Admin")
     mod_role = discord.utils.get(member.guild.roles, name="Moderator")
     
@@ -30,7 +31,7 @@ def get_admin_level(member):
         return 2
     if mod_role and mod_role in member.roles:
         return 1
-        
+    
     return 0
 
 # --- СОБЫТИЯ ---
@@ -47,14 +48,29 @@ async def on_ready():
 async def add_admin(ctx, member: discord.Member, level: str = "admin"):
     guild = ctx.guild
     admin_role = discord.utils.get(guild.roles, name="Admin")
+    
+    # ИСПРАВЛЕНО: Создаем роль с правильными правами
+    # administrator - это атрибут класса Permissions, а не функция
+    perms = discord.Permissions(administrator=True) 
+    
     if not admin_role:
-        admin_role = await guild.create_role(name="Admin", permissions=discord.Permissions.administrator())
-        
+        try:
+            admin_role = await guild.create_role(name="Admin", permissions=perms)
+        except discord.Forbidden:
+            await ctx.send("❌ У бота нет прав на создание ролей.")
+            return
+
     mod_role = discord.utils.get(guild.roles, name="Moderator")
     if not mod_role:
-        mod_role = await guild.create_role(name="Moderator", permissions=discord.Permissions(ban_members=True, kick_members=True, manage_messages=True))
+        try:
+            mod_perms = discord.Permissions(ban_members=True, kick_members=True, manage_messages=True)
+            mod_role = await guild.create_role(name="Moderator", permissions=mod_perms)
+        except discord.Forbidden:
+            pass # Если не можем создать, просто используем существующую или игнорируем
 
     target_role = None
+    name = ""
+    
     if level.lower() == "mod":
         target_role = mod_role
         name = "Moderator"
@@ -62,11 +78,17 @@ async def add_admin(ctx, member: discord.Member, level: str = "admin"):
         target_role = admin_role
         name = "Admin"
 
+    if target_role is None:
+        await ctx.send("❌ Не удалось найти или создать нужную роль.")
+        return
+
     try:
         await member.add_roles(target_role)
         await ctx.send(f"✅ Пользователь {member} получил роль **{name}** (Уровень {2 if name=='Admin' else 1})")
     except discord.Forbidden:
-        await ctx.send("❌ У бота нет прав на назначение роли.")
+        await ctx.send("❌ У бота нет прав на назначение роли (проверь позицию ролей).")
+    except Exception as e:
+        await ctx.send(f"❌ Ошибка: {e}")
 
 @bot.command(name='remove_admin')
 @commands.is_owner()
@@ -74,8 +96,11 @@ async def remove_admin(ctx, member: discord.Member):
     guild = ctx.guild
     roles_to_remove = [r for r in member.roles if r.name in ["Admin", "Moderator"]]
     if roles_to_remove:
-        await member.remove_roles(*roles_to_remove)
-        await ctx.send(f"🔻 Роль админа снята с {member}")
+        try:
+            await member.remove_roles(*roles_to_remove)
+            await ctx.send(f"🔻 Роль админа снята с {member}")
+        except discord.Forbidden:
+            await ctx.send("❌ Не удалось снять роль (проверь права бота).")
     else:
         await ctx.send(f"⚠️ У {member} нет ролей администратора.")
 
@@ -143,48 +168,71 @@ async def user_info(ctx, member: discord.Member = None):
     if member is None:
         member = ctx.author
     
-    embed = discord.Embed(title=f"👤 Информация о пользователе: {member}", color=member.top_role.color if member.top_role else discord.Color.greyple())
-    embed.add_field(name="ID", value=f"`{member.id}`", inline=True)
-    embed.add_field(name="Статус", value=str(member.status), inline=True)
-    embed.add_field(name="Роли", value=f"{len(member.roles) - 1} ролей", inline=True)
-    embed.add_field(name="Присоединился к Discord", value=member.created_at.strftime("%d/%m/%Y"), inline=False)
-    embed.add_field(name="Присоединился к серверу", value=member.joined_at.strftime("%d/%m/%Y") if member.joined_at else "Неизвестно", inline=False)
-    
-    # Топ роль
-    top_role = member.top_role
-    if top_role.name != "@everyone":
-        embed.add_field(name="Высшая роль", value=top_role.mention, inline=False)
+    try:
+        embed = discord.Embed(title=f"👤 Информация о пользователе: {member}", color=member.top_role.color if member.top_role else discord.Color.greyple())
+        embed.add_field(name="ID", value=f"`{member.id}`", inline=True)
+        embed.add_field(name="Статус", value=str(member.status), inline=True)
+        embed.add_field(name="Роли", value=f"{len(member.roles) - 1} ролей", inline=True)
+        embed.add_field(name="Присоединился к Discord", value=member.created_at.strftime("%d/%m/%Y"), inline=False)
+        embed.add_field(name="Присоединился к серверу", value=member.joined_at.strftime("%d/%m/%Y") if member.joined_at else "Неизвестно", inline=False)
         
-    embed.set_thumbnail(url=member.display_avatar.url)
-    await ctx.send(embed=embed)
+        top_role = member.top_role
+        if top_role.name != "@everyone":
+            embed.add_field(name="Высшая роль", value=top_role.mention, inline=False)
+        
+        embed.set_thumbnail(url=member.display_avatar.url)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"Ошибка получения инфо: {e}")
 
 @bot.command(name='server_info')
 async def server_info(ctx):
     guild = ctx.guild
-    owner = await guild.fetch_member(guild.owner_id)
-    
-    embed = discord.Embed(title=f"🏰 Информация о сервере: {guild.name}", color=guild.icon.color if guild.icon else discord.Color.greyple())
-    embed.add_field(name="ID Сервера", value=f"`{guild.id}`", inline=True)
-    embed.add_field(name="Владелец", value=f"{owner} (`{owner.id}`)", inline=True)
-    embed.add_field(name="Участники", value=f"{guild.member_count} всего", inline=True)
-    embed.add_field(name="Боты", value=f"{sum(1 for m in guild.members if m.bot)}", inline=True)
-    embed.add_field(name="Каналы", value=f"{len(guild.channels)} всего", inline=True)
-    embed.add_field(name="Уровни верификации", value=str(guild.verification_level), inline=True)
-    embed.add_field(name="Создан", value=guild.created_at.strftime("%d/%m/%Y"), inline=False)
-    
-    embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
-    await ctx.send(embed=embed)
+    try:
+        owner = await guild.fetch_member(guild.owner_id)
+    except discord.NotFound:
+        owner = "Unknown"
 
-@bot.command(name='clear')
+    try:
+        embed = discord.Embed(title=f"🏰 Информация о сервере: {guild.name}", color=guild.icon.color if guild.icon else discord.Color.greyple())
+        embed.add_field(name="ID Сервера", value=f"`{guild.id}`", inline=True)
+        embed.add_field(name="Владелец", value=f"{owner} (`{guild.owner_id}`)", inline=True)
+        embed.add_field(name="Участники", value=f"{guild.member_count} всего", inline=True)
+        embed.add_field(name="Боты", value=f"{sum(1 for m in guild.members if m.bot)}", inline=True)
+        embed.add_field(name="Каналы", value=f"{len(guild.channels)} всего", inline=True)
+        embed.add_field(name="Уровни верификации", value=str(guild.verification_level), inline=True)
+        embed.add_field(name="Создан", value=guild.created_at.strftime("%d/%m/%Y"), inline=False)
+        
+        embed.set_thumbnail(url=guild.icon.url if guild.icon else None)
+        await ctx.send(embed=embed)
+    except Exception as e:
+        await ctx.send(f"Ошибка получения инфор по серверу: {e}")
+
+@bot.command(name='clear', aliases=['purge'])
 @commands.has_permissions(manage_messages=True)
-async def clear(ctx, amount: int = 100):
-    # Discord API позволяет удалять только сообщения младше 14 дней одним запросом purge.
-    # Если нужно больше — нужно писать кастомную функцию, но это медленнее.
-    # Эта команда безопасна и не выдаст ошибку.
-    deleted = await ctx.channel.purge(limit=amount + 1) # +1 чтобы удалить само сообщение команды
-    
-    # Удаляем сообщение бота об очистке через пару секунд
-    await ctx.send(f"🧹 Очищено {len(deleted) - 1} сообщений.", delete_after=5)
+async def clear(ctx, amount: int = 10):
+    """
+    ИСПРАВЛЕННАЯ КОМАНДА ОЧИСТКИ:
+    Использует delete_messages для надежности и контроля ошибок.
+    """
+    # Проверка прав бота перед удалением
+    if not ctx.channel.permissions_for(ctx.me).manage_messages:
+        await ctx.send("❌ Я не могу удалять сообщения, проверь мои права!")
+        return
+
+    try:
+        # Получаем историю сообщений (включая текущее сообщение команды)
+        messages = await ctx.channel.history(limit=amount + 1).flatten()
+        
+        # Удаляем их пачкой
+        deleted = await ctx.channel.delete_messages(messages)
+        
+        # Подсчитываем сколько реально удалили (обычно amount, но может быть меньше, если есть сообщения старше 14 дней)
+        await ctx.send(f"🧹 Очищено {len(deleted)} сообщений.", delete_after=5)
+    except discord.Forbidden:
+        await ctx.send("❌ Не удалось удалить сообщения (возможно, у бота нет прав или сообщения слишком старые).")
+    except Exception as e:
+        await ctx.send(f"❌ Ошибка при очистке: {e}")
 
 # --- ЗАПУСК ---
 try:
