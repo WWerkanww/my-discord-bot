@@ -104,52 +104,42 @@ async def remove_admin(ctx, member: discord.Member):
     else:
         await ctx.send(f"⚠️ У {member} нет ролей администратора.")
 
-@bot.command(name='say')
-@commands.has_permissions(administrator=True) # Или используй нашу функцию has_admin_level(ctx, min_level=2)
-async def say(ctx, channel: discord.TextChannel = None, *, message: str):
+
+@bot.command(name='sms')
+@commands.has_permissions(administrator=True) # Или используй has_admin_level(ctx, min_level=2)
+async def sms(ctx, *, message: str):
     """
-    Отправляет сообщение от имени бота.
-    Использование: !say <канал> <текст>
-    Пример: !say #general Привет всем!
+    Отправляет сообщение от имени бота с красивым оформлением.
+    Использование: !sms "Текст сообщения"
     """
     
-    # Если канал не указан, пишем туда, где вызвали команду
-    target_channel = channel or ctx.channel
-    
-    # Создаем красивое Embed-сообщение
+    # Создаем красивый Embed
     embed = discord.Embed(
         title="📢 Сообщение от Бота",
         description=message,
-        color=discord.Color.blue() # Цвет рамки
+        color=discord.Color.blue() # Цвет рамки (можно менять на dark_violet, red, green и т.д.)
     )
     
-    # Добавляем "подпись" от имени бота
+    # Добавляем информацию об авторе (подпись)
     embed.set_footer(text=f"Отправил: {ctx.author.display_name} | ID: {ctx.author.id}")
     
     # Добавляем время отправки
     embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
     
-    # Отправляем сообщение
+    # Добавляем аватарку автора (опционально, если хочешь видеть чей это запрос)
+    embed.set_author(name=ctx.author.display_name, icon_url=ctx.author.avatar.url if ctx.author.avatar else None)
+
     try:
-        await target_channel.send(embed=embed)
-        # Удаляем исходное сообщение командой (чтобы не засорять чат)
+        # Отправляем сообщение
+        await ctx.send(embed=embed)
+        
+        # Удаляем исходное сообщение команды (чтобы не засорять чат)
         await ctx.message.delete() 
     except discord.Forbidden:
-        await ctx.send("❌ У бота нет прав писать в этот канал.")
+        await ctx.send("❌ У бота нет прав на отправку сообщений.")
     except Exception as e:
         await ctx.send(f"❌ Ошибка: {e}")
 
-# Альтернативная команда для быстрого отклика без Embed (просто текст)
-@bot.command(name='tts') # Text To Send
-@commands.has_permissions(administrator=True)
-async def tts(ctx, channel: discord.TextChannel = None, *, message: str):
-    """Отправляет обычный текст от имени бота."""
-    target_channel = channel or ctx.channel
-    try:
-        await target_channel.send(message)
-        await ctx.message.delete()
-    except discord.Forbidden:
-        await ctx.send("❌ Не удалось отправить сообщение.")
 # --- КОМАНДА BROADCAST ---
 
 @bot.command(name='broadcast')
