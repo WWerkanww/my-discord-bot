@@ -1,6 +1,5 @@
 import discord
 from discord.ext import commands, tasks
-from dotenv import load_dotenv
 import os
 import json
 import asyncio
@@ -8,12 +7,14 @@ import random
 import datetime
 import aiohttp
 
-# Загрузка переменных окружения
-load_dotenv()
+# Получаем токены из переменных окружения Railway
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
-# Настройки интентов (чтобы бот видел сообщения и участников)
+if not DISCORD_TOKEN:
+    raise ValueError("Переменная DISCORD_TOKEN не найдена в настройках Railway!")
+
+# Настройки интентов
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -26,15 +27,18 @@ DATA_FILE = 'bot_data.json'
 
 def load_data():
     if not os.path.exists(DATA_FILE):
-        return {"warnings": {}, "xp": {}, "logs": {}}
-    with open(DATA_FILE, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        return {"warnings": {}, "xp": {}}
+    try:
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        return {"warnings": {}, "xp": {}}
 
 def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# Глобальная переменная для хранения данных
+# Инициализация данных при запуске
 bot_data = load_data()
 
 # --- СИСТЕМА МОДЕРАЦИИ ---
@@ -60,10 +64,8 @@ async def warn(ctx, member: discord.Member, *, reason: str = "Не указан�
 @bot.command(name='mute')
 @commands.has_permissions(mute_members=True)
 async def mute(ctx, member: discord.Member, duration: int = 60, *, reason: str = "Мут без причины"):
-    # Пример простого мута через роль "Muted"
     muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
     if not muted_role:
-        # Если роли нет, создаем её
         muted_role = await ctx.guild.create_role(name="Muted", permissions=discord.Permissions(send_messages=False))
         for channel in ctx.guild.text_channels:
             await channel.set_permissions(muted_role, send_messages=False)
@@ -103,7 +105,6 @@ async def on_message(message):
         bot_data['xp'][user_id]['level'] += 1
         bot_data['xp'][user_id]['xp'] -= level_up_threshold
         
-        # Уведомление о повышении уровня
         embed = discord.Embed(title="🎉 Уровень повышен!", description=f"Поздравляем! Вы достигли **{bot_data['xp'][user_id]['level']}** уровня!", color=discord.Color.gold())
         await message.channel.send(embed=embed)
         
@@ -122,7 +123,6 @@ async def rank(ctx, member: discord.Member = None):
     embed.add_field(name="Опыт", value=f"{data['xp']} / {data['level'] * 100}", inline=True)
     embed.set_thumbnail(url=target.avatar.url if target.avatar else None)
     
-    # Визуализация прогресса
     bar_length = 10
     filled = int(progress / 10)
     empty = bar_length - filled
@@ -135,7 +135,7 @@ async def rank(ctx, member: discord.Member = None):
 @bot.command(name='ask')
 async def ask_ai(ctx, *, question: str):
     if not OPENAI_API_KEY:
-        await ctx.send("API ключ OpenAI не настроен.")
+        await ctx.send("API ключ OpenAI не настроен в переменных среды.")
         return
     
     async with aiohttp.ClientSession() as session:
@@ -157,14 +157,19 @@ async def ask_ai(ctx, *, question: str):
 
 @bot.event
 async def on_member_join(member):
-    welcome_channel = bot.get_channel(123456789) # Замени на ID своего канала
+    # Найди канал приветствия по имени или ID, если он есть
+    welcome_channel = discord.utils.get(member.guild.text_channels, name="welcome")
+    if not welcome_channel:
+        welcome_channel = member.guild.system_channel # Или другой канал по умолчанию
+    
     if welcome_channel:
         embed = discord.Embed(title="Добро пожаловать!", description=f"{member.mention}, рад видеть тебя на сервере!", color=discord.Color.green())
         embed.set_image(url="https://media.giphy.com/media/26tn336PjAlV8JpGO/giphy.gif")
         await welcome_channel.send(embed=embed)
 
 # Запуск бота
+print("Бот запускается...")
 try:
     bot.run(DISCORD_TOKEN)
 except Exception as e:
-    print(f"Error starting bot: {e}")
+    print(f"Ошибка запуска: {e}")
