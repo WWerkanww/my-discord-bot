@@ -2,11 +2,14 @@ import discord
 from discord.ext import commands
 import datetime
 import os
+import json
 
 # --- КОНФИГУРАЦИЯ ---
 TOKEN = os.getenv('DISCORD_TOKEN')
 if not TOKEN:
     raise ValueError("Не найден токен бота! Установи переменную окружения DISCORD_TOKEN или вставь токен сюда.")
+
+WARNINGS_FILE = 'warnings.json'
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -40,6 +43,121 @@ def get_admin_level(member):
 async def on_ready():
     print(f'✅ Бот запущен как {bot.user}')
     await bot.change_presence(activity=discord.Game(name="Помощь: !help"))
+
+
+def load_warnings():
+    """Загружает предупреждения из файла"""
+    if not os.path.exists(WARNINGS_FILE):
+        return {}
+    with open(WARNINGS_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+def save_warnings(warnings_data):
+    """Сохраняет предупреждения в файл"""
+    with open(WARNINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(warnings_data, f, ensure_ascii=False, indent=4)
+
+@bot.command(name='warn')
+@commands.has_permissions(administrator=True) # Или has_admin_level(ctx, min_level=2)
+async def warn(ctx, member: discord.Member, *, reason: str = "Не указана"):
+    """
+    Выдает предупреждение пользователю.
+    Использование: !warn @user причина
+    """
+    warnings_data = load_warnings()
+    
+    # Инициализация записи пользователя, если её нет
+    user_id = str(member.id)
+    if user_id not in warnings_data:
+        warnings_data[user_id] = []
+    
+    # Добавляем новое предупреждение
+    warning_entry = {
+        "reason": reason,
+        "moderator": ctx.author.display_name,
+        "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    }
+    
+    warnings_data[user_id].append(warning_entry)
+    save_warnings(warnings_data)
+    
+    # Красивое Embed-сообщение о выдании варна
+    embed = discord.Embed(
+        title="⚠️ Предупреждение",
+        description=f"**Нарушение:** {reason}",
+        color=discord.Color.orange()
+    )
+    embed.add_field(name="Кем выдано:", value=ctx.author.display_name, inline=True)
+    embed.add_field(name="Дата:", value=warning_entry["date"], inline=True)
+    embed.set_footer(text=f"Всего предупреждений: {len(warnings_data[user_id])}")
+    embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
+    
+    await ctx.send(embed=embed)
+    
+    # Можно отправить личное сообщение нарушителю (опционально)
+    try:
+        dm_embed = discord.Embed(
+            title="📩 У вас есть предупреждение",
+            description=f"Вы получили предупреждение на сервере **{ctx.guild.name}**.\n\n**Причина:** {reason}\n**Модератор:** {ctx.author.display_name}",
+            color=discord.Color.red()
+        )
+        await member.send(embed=dm_embed)
+    except discord.Forbidden:
+        pass # Если у пользователя закрыты ЛС
+
+@bot.command(name='warnings')
+@commands.has_permissions(view_channel=True)
+async def warnings_list(ctx, member: discord.Member = None):
+    """
+    Показывает список предупреждений пользователя или текущего автора.
+    Использование: !warnings @user
+    """
+    target_member = member or ctx.author
+    warnings_data = load_warnings()
+    
+    user_id = str(target_member.id)
+    user_warnings = warnings_data.get(user_id, [])
+    
+    if not user_warnings:
+        await ctx.send(f"✅ У пользователя {target_member} нет предупреждений.")
+        return
+
+    # Создаем список строк для Embed
+    lines = []
+    for i, w in enumerate(user_warnings, 1):
+        lines.append(f"{i}. **{w['date']}**\n   Причина: {w['reason']}\n   Модератор: {w['moderator']}")
+    
+    embed = discord.Embed(
+        title=f"📋 История предупреждений: {target_member.display_name}",
+        description="\n".join(lines),
+        color=discord.Color.dark_red()
+    )
+    embed.set_thumbnail(url=target_member.avatar.url if target_member.avatar else None)
+    
+    await ctx.send(embed=embed)
+
+@bot.command(name='clear_warns')
+@commands.has_permissions(administrator=True)
+async def clear_warns(ctx, member: discord.Member, *, reason: str = "Удалено модератором"):
+    """
+    Сбрасывает все предупреждения пользователю.
+    """
+    warnings_data = load_warnings()
+    user_id = str(member.id)
+    
+    if user_id in warnings_data and len(warnings_data[user_id]) > 0:
+        count = len(warnings_data[user_id])
+        warnings_data[user_id] = []
+        save_warnings(warnings_data)
+        
+        embed = discord.Embed(
+            title="🧹 Очистка предупреждений",
+            description=f"Все предупреждения ({count} шт.) удалены у {member.display_name}.",
+            color=discord.Color.green()
+        )
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send(f"⚠️ У {member.display_name} не было предупреждений.")
 
 # --- КОМАНДЫ УПРАВЛЕНИЯ АДМИНАМИ ---
 
