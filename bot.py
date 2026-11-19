@@ -14,13 +14,13 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 if not DISCORD_TOKEN:
     raise ValueError("Переменная DISCORD_TOKEN не найдена в настройках Railway!")
 
-# Настройки интентов
+# Создаем интенты и ВКЛЮЧАЕМ message_content явно
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
-intents.guilds = True
+intents.guilds = True # Важно для работы команд
 
-bot = commands.Bot(command_prefix='!', intents=intents, case_insensitive=True)
+# Передаем их в Bot
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 # --- БАЗА ДАННЫХ (JSON) ---
 DATA_FILE = 'bot_data.json'
