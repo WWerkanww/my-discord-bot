@@ -71,11 +71,11 @@ async def on_message(message):
 
 # --- ЗАПУСК БОТА ---
 # Берем токен из переменной окружения BOT_TOKEN
-token = os.getenv('BOT_TOKEN')
+token = os.getenv('DISCORD_TOKEN')
 
 if not token:
     # Это сообщение появится в логах Railway, если ты забыл добавить переменную
-    raise ValueError("Ошибка: Переменная окружения BOT_TOKEN не найдена!")
+    raise ValueError("Ошибка: Переменная окружения DISCORD_TOKEN не найдена!")
 
 print(f"Получен токен длиной {len(token)} символов...")
 bot.run(token)
