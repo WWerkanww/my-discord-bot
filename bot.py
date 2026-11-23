@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 
-# 1. Настройка интентов
+# 1. Настройка интентов (обязательно для чтения сообщений)
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -13,40 +13,35 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Бот запущен: {bot.user}')
-    await bot.change_presence(activity=discord.Game(name="!help"))
+    print(f'Бот успешно запущен: {bot.user}')
+    # Устанавливаем статус бота
+    await bot.change_presence(activity=discord.Game(name="!delete_channel"))
 
 # --- КОМАНДЫ ---
 
 @bot.command()
 async def ping(ctx):
+    """Проверка связи"""
     await ctx.send('Pong! 🏓')
 
 @bot.command()
-async def  info(ctx):
-    embed = discord.Embed(title="Команды", color=discord.Color.blue())
-    embed.add_field(name="!ping", value="Проверка связи")
-    embed.add_field(name="!delete_channel [id или название]", value="Удалить канал по ID или точному названию")
-    embed.add_field(name="!hello [имя]", value="Приветствие")
-    await ctx.send(embed=embed)
-
-@bot.command()
-async def hello(ctx, name: str = "друг"):
+async def hi(ctx, name: str = "друг"):
+    """Приветствие"""
     await ctx.send(f"Привет, {name}! 👋")
 
-# --- НОВАЯ КОМАНДА: УДАЛЕНИЕ КАНАЛА ---
+# Команда удаления канала
 @bot.command()
 async def delete_channel(ctx, channel_name_or_id: str):
     """
-    Удаляет канал по ID или по точному совпадению названия.
+    Удаляет канал по ID или точному названию.
     Требует права 'Manage Channels'.
     """
-    # Проверяем, является ли аргумент числом (ID)
+    # Пытаемся найти по ID
     try:
         channel_id = int(channel_name_or_id)
         channel = discord.utils.get(ctx.guild.channels, id=channel_id)
     except ValueError:
-        # Если это не число, ищем по названию (точное совпадение)
+        # Если не число, ищем по названию
         channel = discord.utils.get(ctx.guild.channels, name=channel_name_or_id)
 
     if not channel:
@@ -60,19 +55,27 @@ async def delete_channel(ctx, channel_name_or_id: str):
     except Exception as e:
         await ctx.send(f"❌ Ошибка при удалении: {e}")
 
-# --- АВТО-ОТВЕТЫ ---
+# Автоматическая реакция на слова
 @bot.listen()
 async def on_message(message):
+    # Игнорируем собственные сообщения бота
     if message.author == bot.user:
         return
-    
+
+    # Реакция на слово "привет"
     if 'привет' in message.content.lower():
         await message.channel.send("Приветствую! 😊")
     
+    # ВАЖНО: Эта строка позволяет выполнять команды (!ping, !hi и т.д.)
     await bot.process_commands(message)
 
-# Запуск
+# --- ЗАПУСК БОТА ---
+# Берем токен из переменной окружения BOT_TOKEN
 token = os.getenv('BOT_TOKEN')
+
 if not token:
-    raise ValueError("Не найден токен BOT_TOKEN!")
+    # Это сообщение появится в логах Railway, если ты забыл добавить переменную
+    raise ValueError("Ошибка: Переменная окружения BOT_TOKEN не найдена!")
+
+print(f"Получен токен длиной {len(token)} символов...")
 bot.run(token)
