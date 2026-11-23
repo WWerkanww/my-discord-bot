@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import os
 
-# 1. Настройка интентов (обязательно для чтения сообщений)
+# 1. Настройка интентов
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
@@ -13,69 +13,71 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f'Бот успешно запущен: {bot.user}')
-    # Устанавливаем статус бота
+    print(f'Бот запущен: {bot.user}')
     await bot.change_presence(activity=discord.Game(name="!delete_channel"))
 
 # --- КОМАНДЫ ---
 
 @bot.command()
 async def ping(ctx):
-    """Проверка связи"""
     await ctx.send('Pong! 🏓')
 
 @bot.command()
 async def hi(ctx, name: str = "друг"):
-    """Приветствие"""
     await ctx.send(f"Привет, {name}! 👋")
 
-# Команда удаления канала
+# --- НОВАЯ ЛОГИКА УДАЛЕНИЯ ПО КОЛИЧЕСТВУ ---
 @bot.command()
-async def delete_channel(ctx, channel_name_or_id: str):
+async def delete_channel(ctx, channel_name: str, amount: int = 1):
     """
-    Удаляет канал по ID или точному названию.
-    Требует права 'Manage Channels'.
+    Удаляет 'amount' каналов с точным названием 'channel_name'.
+    Пример: !delete_channel 🔹все-заходим🔹 15
     """
-    # Пытаемся найти по ID
-    try:
-        channel_id = int(channel_name_or_id)
-        channel = discord.utils.get(ctx.guild.channels, id=channel_id)
-    except ValueError:
-        # Если не число, ищем по названию
-        channel = discord.utils.get(ctx.guild.channels, name=channel_name_or_id)
+    # 1. Получаем все каналы сервера
+    all_channels = list(ctx.guild.channels)
+    
+    # 2. Фильтруем каналы по точному совпадению названия
+    matching_channels = [ch for ch in all_channels if ch.name == channel_name]
+    
+    if not matching_channels:
+        return await ctx.send(f"❌ Каналов с названием '{channel_name}' не найдено.")
 
-    if not channel:
-        return await ctx.send(f"❌ Канал с ID `{channel_name_or_id}` или названием `{channel_name_or_id}` не найден.")
+    # 3. Берем первые 'amount' каналов из списка
+    channels_to_delete = matching_channels[:amount]
+    
+    if not channels_to_delete:
+        return await ctx.send(f"❌ Найдено только {len(matching_channels)} каналов, а запрошено {amount}.")
 
-    try:
-        await channel.delete(reason=f"Удалено пользователем {ctx.author}")
-        await ctx.send(f"✅ Канал '{channel.name}' (ID: {channel.id}) успешно удален.")
-    except discord.Forbidden:
-        await ctx.send("❌ У бота нет прав на удаление каналов.")
-    except Exception as e:
-        await ctx.send(f"❌ Ошибка при удалении: {e}")
+    deleted_count = 0
+    
+    # 4. Удаляем их по очереди
+    for channel in channels_to_delete:
+        try:
+            await channel.delete(reason=f"Удалено пользователем {ctx.author}")
+            deleted_count += 1
+        except discord.Forbidden:
+            await ctx.send(f"⚠️ Не удалось удалить канал '{channel.name}' (нет прав).")
+        except Exception as e:
+            await ctx.send(f"⚠️ Ошибка при удалении '{channel.name}': {e}")
 
-# Автоматическая реакция на слова
+    if deleted_count > 0:
+        await ctx.send(f"✅ Успешно удалено {deleted_count} каналов с названием '{channel_name}'.")
+    else:
+        await ctx.send("❌ Произошла ошибка при удалении.")
+
+# Автоматическая реакция
 @bot.listen()
 async def on_message(message):
-    # Игнорируем собственные сообщения бота
     if message.author == bot.user:
         return
-
-    # Реакция на слово "привет"
     if 'привет' in message.content.lower():
         await message.channel.send("Приветствую! 😊")
-    
-    # ВАЖНО: Эта строка позволяет выполнять команды (!ping, !hi и т.д.)
     await bot.process_commands(message)
 
-# --- ЗАПУСК БОТА ---
-# Берем токен из переменной окружения BOT_TOKEN
+# Запуск
 token = os.getenv('DISCORD_TOKEN')
-
 if not token:
-    # Это сообщение появится в логах Railway, если ты забыл добавить переменную
     raise ValueError("Ошибка: Переменная окружения DISCORD_TOKEN не найдена!")
 
-print(f"Получен токен длиной {len(token)} символов...")
+print(f"Токен загружен. Запуск...")
 bot.run(token)
