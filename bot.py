@@ -17,7 +17,8 @@ intents.members = True
 intents.messages = True
 
 PREFIX = '!'
-bot = commands.Bot(command_prefix=PREFIX, intents=intents)
+# Убираем autohelp, чтобы он не мешал нашему кастомному меню
+bot = commands.Bot(command_prefix=PREFIX, intents=intents, help_command=None)
 
 # --- СИСТЕМА АНТИ-DDOS / АНТИ-СПАМ ---
 
@@ -42,20 +43,25 @@ class AntiSpamSystem:
 
 anti_spam = AntiSpamSystem()
 
+# --- ОБРАБОТКА СООБЩЕНИЙ (ИСПРАВЛЕНИЕ ДУБЛЕЙ) ---
+
 @bot.listen('on_message')
 async def on_message(message):
+    # 1. Игнорируем, если это сам бот
     if message.author == bot.user:
         return
     
-    # Проверка спамом
+    # 2. Проверяем спам/флуд
     if anti_spam.check_spam(message.author, message):
         try:
-            # Временная блокировка на 10 минут
             await message.author.timeout_until(discord.utils.utcnow() + timedelta(minutes=10))
             await message.channel.send(f"⚠️ Пользователь {message.author} заблокирован за спам/флуд!")
         except discord.Forbidden:
-            pass # Если у бота нет прав на таймаут
-        
+            pass 
+
+    # 3. САМОЕ ВАЖНОЕ: передаем управление обработке команд внутреннему механизму бота
+    # Это предотвращает дублирование, так как команда !menu будет выполнена здесь, 
+    # а не отдельным событием.
     await bot.process_commands(message)
 
 # --- КОМАНДЫ ---
@@ -151,7 +157,6 @@ async def menu(ctx):
         color=discord.Color.purple()
     )
     
-    # Список команд с описанием
     commands_list = [
         ("`!ping`", "Проверить работу бота"),
         ("`!info`", "Статистика сервера"),
