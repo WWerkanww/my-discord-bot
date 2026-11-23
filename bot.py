@@ -23,7 +23,7 @@ async def ping(ctx):
     await ctx.send('Pong! 🏓')
 
 @bot.command()
-async def help(ctx):
+async def  info(ctx):
     embed = discord.Embed(title="Команды", color=discord.Color.blue())
     embed.add_field(name="!ping", value="Проверка связи")
     embed.add_field(name="!delete_channel [id или название]", value="Удалить канал по ID или точному названию")
