@@ -101,7 +101,7 @@ async def userinfo(ctx, user: discord.Member = None):
     
     # Если переданный юзер - просто User (не на этом сервере), берем инфо о нем
     if isinstance(target, discord.User):
-         embed = discord.Embed(
+        embed = discord.Embed(
             title=f"👤 Инфо о пользователе: {target.display_name}",
             color=discord.Color.dark_blue()
         )
@@ -118,9 +118,11 @@ async def userinfo(ctx, user: discord.Member = None):
     )
     embed.add_field(name="🆔 ID", value=target.id, inline=True)
     embed.add_field(name="📅 Создан аккаунт", value=target.created_at.strftime("%d.%m.%Y %H:%M"), inline=True)
+    
     # Исправление ошибки 'joined_at':
     joined = target.joined_at.strftime("%d.%m.%Y %H:%M") if target.joined_at else "Неизвестно"
     embed.add_field(name="📥 Вступил на сервер", value=joined, inline=True)
+    
     embed.add_field(name="🎭 Текущий статус", value=target.status.value, inline=True)
     embed.add_field(name="🎨 Лучшая роль", value=target.top_role.mention if target.top_role != ctx.guild.default_role else "@everyone", inline=True)
     
